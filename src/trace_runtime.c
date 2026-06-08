@@ -8,7 +8,7 @@
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
+#include <stdlib.h>
 #if !defined(__x86_64__)
 #error "Este runtime didatico suporta apenas Linux x86_64."
 #endif
@@ -36,50 +36,55 @@ static void fill_event_from_regs(pid_t pid,
 
 static pid_t launch_tracee(char *const argv[])
 {
-    /*
-     * TODO Semana 2:
-     *
-     * Crie o processo monitorado.
-     *
-     * Fluxo esperado:
-     * - fork()
-     * - no filho:
-     *   - ptrace(PTRACE_TRACEME, ...)
-     *   - raise(SIGSTOP)
-     *   - execvp(argv[0], argv)
-     * - no pai:
-     *   - retornar o pid do filho
-     *
-     * Em erro, imprima uma mensagem com perror() e retorne -1.
-     */
-    fprintf(stderr, "erro: TODO Semana 2: implementar launch_tracee()\n");
-    return -1;
+    pid_t child = fork();
+
+    if (child < 0) {
+        perror("fork");
+        return -1;
+    }
+
+    if (child == 0) {
+        // Código do FILHO
+        if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) < 0) {
+            perror("ptrace TRACEME");
+            exit(1);
+}
+        raise(SIGSTOP);
+
+        execvp(argv[0], argv);
+        perror("execvp");
+        exit(1);
+    }
+
+    // Código do PAI - retorna o PID do filho
+    return child;
 }
 
 static int wait_for_initial_stop(pid_t child)
 {
-    /*
-     * TODO Semana 2:
-     *
-     * O filho chama raise(SIGSTOP) antes de executar o programa alvo.
-     * O pai precisa esperar essa parada inicial com waitpid().
-     *
-     * Retorne 0 se o filho parou como esperado, -1 em erro.
-     */
-    fprintf(stderr, "erro: TODO Semana 2: implementar wait_for_initial_stop()\n");
-    return -1;
+int status;
+    
+    if (waitpid(child, &status, 0) < 0) {
+        perror("waitpid");
+        return -1;
+    }
+    
+    if (!WIFSTOPPED(status)) {
+        fprintf(stderr, "erro: filho nao parou como esperado\n");
+        return -1;
+    }
+    
+    return 0;
 }
 
 static int configure_trace_options(pid_t child)
 {
-    /*
-     * TODO Semana 3:
-     *
-     * Configure PTRACE_O_TRACESYSGOOD com PTRACE_SETOPTIONS.
-     * Isso ajuda a diferenciar paradas de syscall de outros sinais.
-     */
-    fprintf(stderr, "erro: TODO Semana 3: implementar configure_trace_options()\n");
-    return -1;
+   if (ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACESYSGOOD) < 0) {
+        perror("ptrace SETOPTIONS");
+        return -1;
+    }
+    
+    return 0;
 }
 
 static int resume_until_next_syscall(pid_t child, int signal_to_deliver)
@@ -167,7 +172,7 @@ int trace_program(char *const argv[],
             return 0;
         }
 
-        /*
+      	  /*
          * TODO Semana 4:
          *
          * Use PTRACE_GETREGS para preencher regs.
@@ -175,7 +180,7 @@ int trace_program(char *const argv[],
          */
         memset(&regs, 0, sizeof(regs));
         fill_event_from_regs(child, entering, &regs, &ev);
-        if (observer != NULL) {
+        if (observer != NULL){
             observer(&ev, userdata);
         }
 
