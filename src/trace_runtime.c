@@ -32,6 +32,15 @@ static void fill_event_from_regs(pid_t pid,
     memset(ev, 0, sizeof(*ev));
     ev->pid = pid;
     ev->entering = entering;
+    ev->syscall_no = regs->orig_rax;
+    ev->ret = regs->rax;
+
+    ev->args[0] = regs->rdi;
+    ev->args[1] = regs->rsi;
+    ev->args[2] = regs->rdx;
+    ev->args[3] = regs->r10;
+    ev->args[4] = regs->r8;
+    ev->args[5] = regs->r9;
 }
 
 static pid_t launch_tracee(char *const argv[])
@@ -63,8 +72,10 @@ static pid_t launch_tracee(char *const argv[])
 static int wait_for_initial_stop(pid_t child)
 {
 int status;
+pid_t ret;
     
-    if (waitpid(child, &status, 0) < 0) {
+    ret = waitpid(child, &status, 0);
+    if (ret < 0) {
         perror("waitpid");
         return -1;
     }
@@ -90,7 +101,7 @@ static int configure_trace_options(pid_t child)
 static int resume_until_next_syscall(pid_t child, int signal_to_deliver)
 {
     if (ptrace(PTRACE_SYSCALL, child, NULL, signal_to_deliver) < 0) {
-        perror("ptrace SYSCALL");
+        perror("ptrace PTRACE_SYSCALL");
         return -1;
     }
     
@@ -99,7 +110,7 @@ static int resume_until_next_syscall(pid_t child, int signal_to_deliver)
 
 static int wait_for_syscall_stop(pid_t child, int *status)
 {
-  int ret;
+  pid_t ret;
     
     ret = waitpid(child, status, 0);
     if (ret < 0) {
@@ -112,6 +123,10 @@ static int wait_for_syscall_stop(pid_t child, int *status)
     }
     
     if (WIFSTOPPED(*status)) {
+        //int sig = WSTOPSIG(*status);
+        //if (sig == (SIGTRAP | 0X00)){return 1}
+        //if (sig == SIGTRAP){return 0}
+
         if ((*status >> 8) & 0x80) {
             return 1;  
         }
@@ -176,9 +191,15 @@ int trace_program(char *const argv[],
          * Depois chame fill_event_from_regs() e observer().
          */
         memset(&regs, 0, sizeof(regs));
+        if (ptrace(PTRACE_GETREGS, child, NULL, &regs) < 0){
+            perror("ptrace PTRACE_GETREGS");
+            return -1;
+        }
         fill_event_from_regs(child, entering, &regs, &ev);
-        if (observer != NULL){
+
+        if (observer != NULL) {
             observer(&ev, userdata);
+        }
         }
 
         entering = !entering;
@@ -187,4 +208,4 @@ int trace_program(char *const argv[],
             return -1;
         }
     }
-}
+
