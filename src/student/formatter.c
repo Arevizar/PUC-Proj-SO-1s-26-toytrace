@@ -23,10 +23,9 @@ void student_debug_raw_event(const struct syscall_event *ev,
                  ev->args[5]);
 
     } else {
-        snprintf(buf, bufsz, "pid=%d %s %s",
+        snprintf(buf, bufsz, "pid=%d %s saida",
                  ev->pid,
-                 syscall_name(ev->syscall_no),
-                 ev->entering ? "entrada" : "saida");
+                 syscall_name(ev->syscall_no));
     }
 }
 
