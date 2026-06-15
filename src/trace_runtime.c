@@ -110,31 +110,42 @@ static int resume_until_next_syscall(pid_t child, int signal_to_deliver)
 
 static int wait_for_syscall_stop(pid_t child, int *status)
 {
-  pid_t ret;
-    
-    ret = waitpid(child, status, 0);
-    if (ret < 0) {
-        perror("waitpid");
-        return -1;
-    }
-    
-    if (WIFEXITED(*status) || WIFSIGNALED(*status)) {
-        return 0;
-    }
-    
-    if (WIFSTOPPED(*status)) {
-        //int sig = WSTOPSIG(*status);
-        //if (sig == (SIGTRAP | 0X00)){return 1}
-        //if (sig == SIGTRAP){return 0}
+    while (1) {
+        pid_t ret = waitpid(child, status, 0);
 
-        if ((*status >> 8) & 0x80) {
-            return 1;  
+        if (ret < 0) {
+            perror("waitpid");
+            return -1;
+        }
+
+        if (WIFEXITED(*status) || WIFSIGNALED(*status)) {
+            return 0;
+        }
+
+        if (!WIFSTOPPED(*status)) {
+            return -1;
+        }
+
+        int sig = WSTOPSIG(*status);
+
+        if (sig == (SIGTRAP | 0x80)) {
+            return 1;
+        }
+
+        if (sig == SIGTRAP) {
+            if (ptrace(PTRACE_SYSCALL, child, NULL, 0) < 0) {
+                perror("ptrace PTRACE_SYSCALL");
+                return -1;
+            }
+            continue;
+        }
+
+        if (ptrace(PTRACE_SYSCALL, child, NULL, sig) < 0) {
+            perror("ptrace PTRACE_SYSCALL");
+            return -1;
         }
     }
-    
-    return 0;  
 }
-
 int trace_program(char *const argv[],
                   trace_observer_fn observer,
                   void *userdata)
@@ -183,13 +194,6 @@ int trace_program(char *const argv[],
             }
             return 0;
         }
-
-      	  /*
-         * TODO Semana 4:
-         *
-         * Use PTRACE_GETREGS para preencher regs.
-         * Depois chame fill_event_from_regs() e observer().
-         */
         memset(&regs, 0, sizeof(regs));
         if (ptrace(PTRACE_GETREGS, child, NULL, &regs) < 0){
             perror("ptrace PTRACE_GETREGS");
@@ -200,7 +204,6 @@ int trace_program(char *const argv[],
         if (observer != NULL) {
             observer(&ev, userdata);
         }
-        }
 
         entering = !entering;
 
@@ -208,4 +211,4 @@ int trace_program(char *const argv[],
             return -1;
         }
     }
-
+}
